@@ -1,0 +1,53 @@
+Overview
+This project is a RESTful API web application for public transit services built using Python 3.9+ and Flask.
+ It provides schedules for upcoming public transit services from an origin station to a destination station,
+ based on parameters such as origin station ID, destination station ID, latitude and longitude coordinates.
+ The application is containerized using Docker.
+
+Features
+RESTful API to fetch transit schedules.
+Swagger UI for API documentation.
+Containerized using Docker.
+Unit and integration tests.
+Pagination for results.
+Mock data for testing.
+
+AWS CloudFormation Templates Overview
+The provided CloudFormation templates (alb-ecs-cluster.yaml and ecs-service.yaml) are designed to set up the necessary
+AWS infrastructure for deploying the public transit service API using ECS and an Application Load Balancer (ALB).
+
+alb-ecs-cluster.yaml Template
+Description
+This template creates an ECS Cluster, an ALB, a Target Group, and the necessary infrastructure to deploy services on
+AWS ECS using Fargate.
+
+Parameters
+    StageName: Environment stage (e.g., dev, test, staging, prod).
+    PortNumber: The port number for the target group (default: 7000).
+Mappings
+    AccountDetails: Mapping for VPC ID and Subnets based on AWS Account ID.
+Resources
+    TaskDefinition: Defines the ECS task with Fargate configuration.
+    ALBListenerRuleHome: Sets up the Listener Rule for the ALB.
+    Service: Deploys the ECS service.
+    ServiceScalingTarget: Sets up the scalable target for the ECS service.
+    ServiceScalingPolicy: Defines the scaling policy for the ECS service.
+    CloudwatchLogsGroup: Creates a CloudWatch Logs group for logging.
+
+Key Features and Configuration
+ECS Cluster and Service:
+    -An ECS cluster named agile-image-subway-${StageName}-cluster is created.
+    -A task definition with Fargate launch type is configured, specifying CPU and memory requirements.
+    -The ECS service is set up with auto-scaling capabilities.
+
+Application Load Balancer (ALB):
+    -An internet-facing ALB is created with listeners and target groups.
+    -The listener forwards traffic to the ECS service through the target group.
+
+Auto-Scaling:
+    -Auto-scaling is enabled for the ECS service based on CPU utilization metrics.
+    -The scaling policies ensure the service scales in and out based on the load.
+
+Logging:
+    -Logs from the ECS tasks are sent to a CloudWatch Logs group.
+    -Log configurations are defined in the task definition.

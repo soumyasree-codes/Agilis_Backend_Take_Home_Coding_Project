@@ -1,0 +1,56 @@
+swagger: "2.0"
+info:
+  description: "This is the API documentation for the Transit Schedule service."
+  version: "1.0.0"
+  title: "Transit Schedule API"
+host: "127.0.0.1:5000"
+basePath: "/"
+schemes:
+  - "http"
+paths:
+  /transit/schedule:
+    get:
+      tags:
+        - "transit"
+      summary: "Get transit schedule"
+      description: "Get transit schedule between origin and destination stations."
+      parameters:
+        - name: "origin_station_id"
+          in: "query"
+          type: "string"
+          required: true
+          description: "ID of the origin station."
+        - name: "destination_station_id"
+          in: "query"
+          type: "string"
+          required: true
+          description: "ID of the destination station."
+        - name: "latitude"
+          in: "query"
+          type: "number"
+          format: "float"
+          required: false
+          description: "Latitude of the location."
+        - name: "longitude"
+          in: "query"
+          type: "number"
+          format: "float"
+          required: false
+          description: "Longitude of the location."
+        - name: "page"
+          in: "query"
+          type: "integer"
+          required: false
+          description: "Page number for pagination."
+          default: 1
+        - name: "per_page"
+          in: "query"
+          type: "integer"
+          required: false
+          description: "Number of records per page."
+          default: 10
+      responses:
+        200:
+          description: "Successful response"
+        500:
+          description: "Internal server error"

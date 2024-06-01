@@ -1,0 +1,126 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: CloudFormation template for ECS Services, Tasks, Definitions
+Parameters:
+  StageName:
+    Type: String
+    Default: dev
+    Description: Predefined Values for Mpex Environments
+    AllowedValues: [dev, test, staging, prod]
+  PortNumber:
+    Type: Number
+    Description: The port number for the target group
+    Default: 7000  # You can specify a default value here
+
+Mappings:
+  AccountDetails:
+    # non-prod
+    '665403465716':
+      VPCID: 'vpc-06f2d59ac022e6cfe'
+      Subnets:
+        [
+          'subnet-0ab5870b04568c141',
+          'subnet-09b08bfdf2c96a2a2',
+          'subnet-000534d87e11055fa',
+        ]
+
+Resources:
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub 'agile-image-subway-${StageName}'
+      TaskRoleArn: arn:aws:iam::665403465716:role/ecsTaskExecutionRole
+      ExecutionRoleArn: arn:aws:iam::665403465716:role/ecsTaskExecutionRole
+      RequiresCompatibilities:
+        - FARGATE
+      NetworkMode: awsvpc
+      Cpu: 512
+      Memory: 1024
+      ContainerDefinitions:
+        - Name: !Sub 'agile-image-subway-${StageName}'
+          Essential: true
+          Image: agile-image:subway
+          Environment:
+            - Name: STAGE
+              Value: !Ref StageName
+            - Name: LOG_LEVEL
+              Value: 'info'
+            - Name: DEBUG
+              Value: ''
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref 'CloudwatchLogsGroup'
+              awslogs-region: !Ref 'AWS::Region'
+              awslogs-stream-prefix: ecs-agile-image-subway
+          PortMappings:
+            - ContainerPort: !Ref PortNumber
+
+  ALBListenerRuleHome:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      Actions:
+        - Type: forward
+          TargetGroupArn: !ImportValue
+            'Fn::Sub': 'EcsTargetGroup-${StageName}'
+      Conditions:
+        - Field: path-pattern
+          Values:
+            - /*
+      ListenerArn: !ImportValue
+        'Fn::Sub': 'ALBListener-${StageName}'
+      Priority: 20
+
+  Service:
+    Type: AWS::ECS::Service
+    DependsOn:
+      - ALBListenerRuleHome
+    Properties:
+      ServiceName: !Sub 'agile-image-subway-${StageName}-service'
+      Cluster: !ImportValue
+         'Fn::Sub': 'agile-image-subway-${StageName}-cluster'
+      LaunchType: FARGATE
+      LoadBalancers:
+        - ContainerName: !Sub 'agile-image-subway-${StageName}'
+          ContainerPort: !Ref PortNumber
+          TargetGroupArn: !ImportValue
+            'Fn::Sub': 'EcsTargetGroup-${StageName}'
+      TaskDefinition: !Ref 'TaskDefinition'
+      DeploymentController:
+        Type: 'ECS'
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED  # DISABLED for EC2 type
+          SecurityGroups:
+            - 'sg-0d1b5e7d337b731b2'
+          Subnets: !FindInMap [AccountDetails, !Ref 'AWS::AccountId', Subnets]
+
+  ServiceScalingTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    DependsOn: Service
+    Properties:
+      MaxCapacity: 2
+      MinCapacity: 1
+      ResourceId:
+        !Join ['', ['service/', {'Fn::ImportValue': {'Fn::Sub': 'agile-image-subway-${StageName}-cluster'}}, '/', {'Fn::GetAtt': ['Service', 'Name']}]]
+      RoleARN: arn:aws:iam::665403465716:role/ECSAutoScalingRoleMpex
+      ScalableDimension: ecs:service:DesiredCount
+      ServiceNamespace: ecs
+
+  ServiceScalingPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: agileImageSubwayScalingPolicy
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref ServiceScalingTarget
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 30.0
+        ScaleInCooldown: 60
+        ScaleOutCooldown: 60
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ECSServiceAverageCPUUtilization
+
+  CloudwatchLogsGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub 'agile-image-subway-${StageName}'
+      RetentionInDays: 30

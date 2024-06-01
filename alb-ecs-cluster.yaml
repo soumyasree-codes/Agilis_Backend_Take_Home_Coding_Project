@@ -1,0 +1,162 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: CloudFormation template for ECS Cluster, ALB, Target Group & associated Infra
+
+Parameters:
+  StageName:
+    Type: String
+    Default: 'dev'
+    Description: Predefined Values for agile environments
+    AllowedValues: [dev, test, staging, prod]
+  PortNumber:
+    Type: Number
+    Description: The port number for the target group
+    Default: 7000
+
+Mappings:
+  AccountDetails:
+    # non-prod
+    '665403465716':
+      VPCID: 'vpc-06f2d59ac022e6cfe'
+      Subnets:
+        [
+          'subnet-0ab5870b04568c141',
+          'subnet-09b08bfdf2c96a2a2',
+          'subnet-000534d87e11055fa',
+        ]
+
+Resources:
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub 'agile-image-subway-${StageName}-cluster'
+
+  agileALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub 'agile-image-subway-${StageName}-alb'
+      Scheme: internet-facing
+      Type: application
+      Subnets: !FindInMap [AccountDetails, !Ref 'AWS::AccountId', Subnets]
+      SecurityGroups:
+        - 'sg-0d1b5e7d337b731b2'
+
+  ALBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref EcsTargetGroup
+      LoadBalancerArn: !Ref agileALB
+      Port: 80
+      Protocol: HTTP
+
+  EcsTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthyThresholdCount: 2
+      TargetType: ip
+      Name: !Sub 'agile-image-subway-${StageName}-target-group'
+      Port: !Ref PortNumber
+      Protocol: HTTP
+      HealthCheckEnabled: true
+      HealthCheckPath: /graphql
+      UnhealthyThresholdCount: 5
+      Matcher:
+        HttpCode: 200-499
+      HealthCheckIntervalSeconds: 90
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 60
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: 30
+      VpcId: !FindInMap [AccountDetails, !Ref 'AWS::AccountId', VPCID]
+
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub 'agile-image-subway-${StageName}-task'
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: 256
+      Memory: 512
+      ContainerDefinitions:
+        - Name: agile-container
+          Image: agile-image:subway
+          Essential: true
+          PortMappings:
+            - ContainerPort: !Ref PortNumber
+              HostPort: !Ref PortNumber
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Sub "/ecs/agile-image-subway-${StageName}"
+              awslogs-region: !Ref "AWS::Region"
+              awslogs-stream-prefix: "ecs"
+
+  ECSService:
+    Type: AWS::ECS::Service
+    Properties:
+      Cluster: !Ref ECSCluster
+      DesiredCount: 1
+      LaunchType: FARGATE
+      TaskDefinition: !Ref TaskDefinition
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          Subnets: !FindInMap [AccountDetails, !Ref 'AWS::AccountId', Subnets]
+          SecurityGroups:
+            - 'sg-0d1b5e7d337b731b2'
+      LoadBalancers:
+        - ContainerName: agile-container
+          ContainerPort: !Ref PortNumber
+          TargetGroupArn: !Ref EcsTargetGroup
+
+Outputs:
+  ECSClusterName:
+    Description: ECS Cluster Name
+    Value: !Ref ECSCluster
+    Export:
+      Name: !Sub "agile-image-subway-${StageName}-cluster"
+
+  agileALBName:
+    Description: App Alb Name
+    Value: !Ref agileALB
+    Export:
+      Name: !Sub "agileALB-${StageName}"
+
+  EcsTargetGroupName:
+    Description: ECS Target Group Name
+    Value: !Ref EcsTargetGroup
+    Export:
+      Name: !Sub "EcsTargetGroup-${StageName}"
+
+  EcsTargetGroupFullName:
+    Description: ECS Target Group Name
+    Value: !GetAtt EcsTargetGroup.TargetGroupFullName
+    Export:
+      Name: !Sub "EcsTargetFullName-${StageName}"
+
+  ALBListenerName:
+    Description: ALB Listener Name
+    Value: !Ref ALBListener
+    Export:
+      Name: !Sub "ALBListener-${StageName}"
+
+  agileALBCanonicalHostedZone:
+    Description: CanonicalHostedZoneId
+    Value: !GetAtt agileALB.CanonicalHostedZoneID
+    Export:
+      Name: !Sub "agileALBCanonicalHostedZoneID-${StageName}"
+
+  agileALBDNS:
+    Description: agileALBDNS
+    Value: !GetAtt agileALB.DNSName
+    Export:
+      Name: !Sub "agileALBDNSName-${StageName}"
+
+  agileALBLoadBalancer:
+    Description: agileALB LoadBalancerFullName
+    Value: !GetAtt agileALB.LoadBalancerFullName
+    Export:
+      Name: !Sub "agileALBLoadBalancerFullName-${StageName}"
